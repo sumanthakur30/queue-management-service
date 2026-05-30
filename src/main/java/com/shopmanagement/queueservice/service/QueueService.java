@@ -53,7 +53,7 @@ public class QueueService {
 
     @Transactional
     public QueueToken generateToken(QueueToken payload) {
-        TenantContext.requireAnyPermission("MANAGE_QUEUE", "MANAGE_APPOINTMENTS", "MANAGE_CONSULTATIONS", "MANAGE_ORDERS");
+        TenantContext.requireAnyPermission("MANAGE_QUEUE", "MANAGE_APPOINTMENTS", "MANAGE_CONSULTATIONS");
         validate(payload);
         Long tenantId = TenantContext.requireTenantId();
         String shopId = TenantContext.requireShopId();
@@ -78,9 +78,7 @@ public class QueueService {
 
     @Transactional
     public QueueToken callNext(Long doctorId) {
-        // Align with doctor/reception UI routes (MANAGE_ORDERS) and token generation.
-        TenantContext.requireAnyPermission(
-                "MANAGE_QUEUE", "MANAGE_APPOINTMENTS", "MANAGE_CONSULTATIONS", "MANAGE_ORDERS");
+        TenantContext.requireAnyPermission("MANAGE_QUEUE", "MANAGE_APPOINTMENTS", "MANAGE_CONSULTATIONS");
         LocalDate today = LocalDate.now();
         List<QueueToken> waiting = queueTokenRepository
                 .findByTenantIdAndShopIdAndDoctorIdAndTokenDateOrderByTokenNumberAsc(
@@ -102,7 +100,7 @@ public class QueueService {
     @Transactional
     public QueueToken startConsultation(Long tokenId) {
         TenantContext.requireAnyPermission(
-                "MANAGE_QUEUE", "MANAGE_APPOINTMENTS", "MANAGE_CONSULTATIONS", "MANAGE_ORDERS");
+                "MANAGE_CONSULTATIONS", "WRITE_PRESCRIPTION", "VIEW_DOCTOR_DASHBOARD");
         QueueToken token = require(tokenId);
         token.setStatus("IN_CONSULTATION");
         token.setConsultStartedAt(LocalDateTime.now());
@@ -112,7 +110,7 @@ public class QueueService {
     @Transactional
     public QueueToken complete(Long tokenId) {
         TenantContext.requireAnyPermission(
-                "MANAGE_QUEUE", "MANAGE_APPOINTMENTS", "MANAGE_CONSULTATIONS", "MANAGE_ORDERS");
+                "MANAGE_CONSULTATIONS", "WRITE_PRESCRIPTION", "VIEW_DOCTOR_DASHBOARD", "MANAGE_QUEUE");
         QueueToken token = require(tokenId);
         token.setStatus("COMPLETED");
         token.setCompletedAt(LocalDateTime.now());
