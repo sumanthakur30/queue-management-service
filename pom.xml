@@ -19,7 +19,12 @@
     </properties>
     <dependencyManagement>
         <dependencies>
-            <dependency>
+            		<dependency>
+			<groupId>com.shopmanagement</groupId>
+			<artifactId>security-common</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+		</dependency>
+<dependency>
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>
                 <version>${spring-cloud.version}</version>
@@ -29,7 +34,12 @@
         </dependencies>
     </dependencyManagement>
     <dependencies>
-        <dependency>
+        		<dependency>
+			<groupId>com.shopmanagement</groupId>
+			<artifactId>security-common</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+		</dependency>
+<dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
