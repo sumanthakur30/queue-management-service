@@ -3,6 +3,7 @@ package com.shopmanagement.queueservice.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -44,11 +45,14 @@ public class QueueService {
         List<QueueToken> inConsult = queueTokenRepository
                 .findByTenantIdAndShopIdAndBranchIdAndTokenDateAndStatusOrderByTokenNumberAsc(
                         TenantContext.requireTenantId(), TenantContext.requireShopId(), branchId, tokenDate, "IN_CONSULTATION");
-        return Map.of(
-                "date", tokenDate.toString(),
-                "nowServing", inConsult.isEmpty() ? (called.isEmpty() ? null : called.get(0)) : inConsult.get(0),
-                "waiting", waiting,
-                "called", called);
+        Map<String, Object> board = new LinkedHashMap<>();
+        board.put("date", tokenDate.toString());
+        board.put(
+                "nowServing",
+                inConsult.isEmpty() ? (called.isEmpty() ? null : called.get(0)) : inConsult.get(0));
+        board.put("waiting", waiting);
+        board.put("called", called);
+        return board;
     }
 
     @Transactional
