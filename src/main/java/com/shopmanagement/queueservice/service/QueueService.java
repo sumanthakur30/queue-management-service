@@ -101,14 +101,52 @@ public class QueueService {
         return queueTokenRepository.save(next);
     }
 
+    /**
+     * Start (or resume) consultation for a specific token — including out-of-order WAITING patients.
+     * Any other same-doctor IN_CONSULTATION token for today is parked back to WAITING.
+     */
     @Transactional
     public QueueToken startConsultation(Long tokenId) {
         TenantContext.requireAnyPermission(
                 "MANAGE_CONSULTATIONS", "WRITE_PRESCRIPTION", "VIEW_DOCTOR_DASHBOARD");
         QueueToken token = require(tokenId);
+        String status = token.getStatus() == null ? "" : token.getStatus().trim().toUpperCase();
+        if ("COMPLETED".equals(status) || "CANCELLED".equals(status) || "NO_SHOW".equals(status)) {
+            throw new IllegalArgumentException("Cannot start consultation for token status: " + status);
+        }
+        if ("IN_CONSULTATION".equals(status)) {
+            return token;
+        }
+        if (!"WAITING".equals(status) && !"CALLED".equals(status)) {
+            throw new IllegalArgumentException("Cannot start consultation for token status: " + status);
+        }
+        parkOtherInConsultation(token);
+        if (token.getCalledAt() == null) {
+            token.setCalledAt(LocalDateTime.now());
+        }
         token.setStatus("IN_CONSULTATION");
         token.setConsultStartedAt(LocalDateTime.now());
         return queueTokenRepository.save(token);
+    }
+
+    /** Put other open consults for the same doctor/day back to WAITING so out-of-order start is safe. */
+    private void parkOtherInConsultation(QueueToken starting) {
+        LocalDate tokenDate = starting.getTokenDate() != null ? starting.getTokenDate() : LocalDate.now();
+        queueTokenRepository
+                .findByTenantIdAndShopIdAndDoctorIdAndTokenDateOrderByTokenNumberAsc(
+                        TenantContext.requireTenantId(),
+                        TenantContext.requireShopId(),
+                        starting.getDoctorId(),
+                        tokenDate)
+                .stream()
+                .filter(other -> other.getId() != null && !other.getId().equals(starting.getId()))
+                .filter(other -> "IN_CONSULTATION".equalsIgnoreCase(other.getStatus()))
+                .forEach(other -> {
+                    other.setStatus("WAITING");
+                    other.setConsultStartedAt(null);
+                    other.setCalledAt(null);
+                    queueTokenRepository.save(other);
+                });
     }
 
     @Transactional
