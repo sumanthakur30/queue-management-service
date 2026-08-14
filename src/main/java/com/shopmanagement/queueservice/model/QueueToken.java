@@ -65,6 +65,10 @@ public class QueueToken extends TenantScopedEntity {
     @Column(name = "opd_room", length = 50)
     private String opdRoom;
 
+    /** Clinical consultation for this OPD encounter (same visit across lab wait / review). */
+    @Column(name = "consultation_id")
+    private Long consultationId;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Long getBranchId() { return branchId; }
@@ -97,4 +101,6 @@ public class QueueToken extends TenantScopedEntity {
     public void setEstimatedWaitMinutes(Integer estimatedWaitMinutes) { this.estimatedWaitMinutes = estimatedWaitMinutes; }
     public String getOpdRoom() { return opdRoom; }
     public void setOpdRoom(String opdRoom) { this.opdRoom = opdRoom; }
+    public Long getConsultationId() { return consultationId; }
+    public void setConsultationId(Long consultationId) { this.consultationId = consultationId; }
 }

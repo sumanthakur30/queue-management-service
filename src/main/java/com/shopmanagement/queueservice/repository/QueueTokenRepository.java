@@ -20,6 +20,18 @@ public interface QueueTokenRepository extends JpaRepository<QueueToken, Long> {
 
     Optional<QueueToken> findByIdAndTenantIdAndShopId(Long id, Long tenantId, String shopId);
 
+    List<QueueToken> findByTenantIdAndShopIdAndDoctorIdAndStatusInAndTokenDateGreaterThanEqualOrderByTokenDateDescTokenNumberAsc(
+            Long tenantId, String shopId, Long doctorId, List<String> statuses, LocalDate fromDate);
+
+    List<QueueToken> findByTenantIdAndShopIdAndPatientIdAndDoctorIdAndStatusInOrderByTokenDateDescTokenNumberDesc(
+            Long tenantId, String shopId, Long patientId, Long doctorId, List<String> statuses);
+
+    List<QueueToken> findByTenantIdAndShopIdAndPatientIdAndStatusInOrderByTokenDateDescTokenNumberDesc(
+            Long tenantId, String shopId, Long patientId, List<String> statuses);
+
+    Optional<QueueToken> findFirstByTenantIdAndShopIdAndConsultationIdAndStatusInOrderByIdDesc(
+            Long tenantId, String shopId, Long consultationId, List<String> statuses);
+
     @Query("""
             SELECT COALESCE(MAX(q.tokenNumber), 0) FROM QueueToken q
             WHERE q.tenantId = :tenantId AND q.shopId = :shopId

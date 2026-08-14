@@ -59,6 +59,39 @@ public class QueueController {
         return queueService.startConsultation(id);
     }
 
+    @PutMapping("/tokens/{id}/await-lab")
+    public QueueToken awaitLab(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long consultationId) {
+        return queueService.awaitLabResults(id, consultationId);
+    }
+
+    @PutMapping("/tokens/lab-results-available")
+    public org.springframework.http.ResponseEntity<QueueToken> markLabResultsAvailable(
+            @RequestParam Long patientId,
+            @RequestParam(required = false) Long doctorId,
+            @RequestParam(required = false) Long consultationId) {
+        QueueToken updated = queueService.markLabResultsAvailable(patientId, doctorId, consultationId);
+        if (updated == null) {
+            return org.springframework.http.ResponseEntity.noContent().build();
+        }
+        return org.springframework.http.ResponseEntity.ok(updated);
+    }
+
+    @GetMapping("/attention")
+    public List<QueueToken> attention(
+            @RequestParam Long doctorId,
+            @RequestParam(required = false) Integer lookbackDays) {
+        return queueService.attentionQueue(doctorId, lookbackDays);
+    }
+
+    @GetMapping("/open-for-patient")
+    public List<QueueToken> openForPatient(
+            @RequestParam Long patientId,
+            @RequestParam(required = false) Long doctorId) {
+        return queueService.openForPatient(patientId, doctorId);
+    }
+
     @PutMapping("/tokens/{id}/complete")
     public QueueToken complete(@PathVariable Long id) {
         return queueService.complete(id);

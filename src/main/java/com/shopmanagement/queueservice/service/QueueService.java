@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +17,34 @@ import com.shopmanagement.queueservice.support.TenantContext;
 
 @Service
 public class QueueService {
+
+    public static final String STATUS_WAITING = "WAITING";
+    public static final String STATUS_CALLED = "CALLED";
+    public static final String STATUS_IN_CONSULTATION = "IN_CONSULTATION";
+    public static final String STATUS_WAITING_FOR_LAB_RESULTS = "WAITING_FOR_LAB_RESULTS";
+    public static final String STATUS_LAB_RESULTS_AVAILABLE = "LAB_RESULTS_AVAILABLE";
+    public static final String STATUS_COMPLETED = "COMPLETED";
+    public static final String STATUS_CANCELLED = "CANCELLED";
+    public static final String STATUS_NO_SHOW = "NO_SHOW";
+
+    private static final Set<String> STARTABLE = Set.of(
+            STATUS_WAITING,
+            STATUS_CALLED,
+            STATUS_WAITING_FOR_LAB_RESULTS,
+            STATUS_LAB_RESULTS_AVAILABLE);
+    private static final List<String> OPEN_ENCOUNTER_STATUSES = List.of(
+            STATUS_WAITING,
+            STATUS_CALLED,
+            STATUS_IN_CONSULTATION,
+            STATUS_WAITING_FOR_LAB_RESULTS,
+            STATUS_LAB_RESULTS_AVAILABLE);
+    private static final List<String> ATTENTION_STATUSES = List.of(
+            STATUS_WAITING_FOR_LAB_RESULTS,
+            STATUS_LAB_RESULTS_AVAILABLE,
+            STATUS_IN_CONSULTATION);
+    private static final List<String> LAB_HOLD_STATUSES = List.of(
+            STATUS_WAITING_FOR_LAB_RESULTS,
+            STATUS_LAB_RESULTS_AVAILABLE);
 
     private final QueueTokenRepository queueTokenRepository;
 
@@ -33,18 +62,54 @@ public class QueueService {
                 TenantContext.requireTenantId(), TenantContext.requireShopId(), doctorId, tokenDate);
     }
 
+    /**
+     * Open encounters that still need doctor attention (lab wait / results ready / in consult),
+     * including prior calendar days so next-day report review resumes the same token.
+     */
+    @Transactional(readOnly = true)
+    public List<QueueToken> attentionQueue(Long doctorId, Integer lookbackDays) {
+        if (doctorId == null) {
+            throw new IllegalArgumentException("doctorId is required");
+        }
+        int days = lookbackDays == null || lookbackDays < 1 ? 30 : Math.min(lookbackDays, 90);
+        LocalDate from = LocalDate.now().minusDays(days);
+        return queueTokenRepository
+                .findByTenantIdAndShopIdAndDoctorIdAndStatusInAndTokenDateGreaterThanEqualOrderByTokenDateDescTokenNumberAsc(
+                        TenantContext.requireTenantId(),
+                        TenantContext.requireShopId(),
+                        doctorId,
+                        ATTENTION_STATUSES,
+                        from);
+    }
+
+    @Transactional(readOnly = true)
+    public List<QueueToken> openForPatient(Long patientId, Long doctorId) {
+        if (patientId == null) {
+            throw new IllegalArgumentException("patientId is required");
+        }
+        Long tenantId = TenantContext.requireTenantId();
+        String shopId = TenantContext.requireShopId();
+        if (doctorId != null) {
+            return queueTokenRepository
+                    .findByTenantIdAndShopIdAndPatientIdAndDoctorIdAndStatusInOrderByTokenDateDescTokenNumberDesc(
+                            tenantId, shopId, patientId, doctorId, OPEN_ENCOUNTER_STATUSES);
+        }
+        return queueTokenRepository.findByTenantIdAndShopIdAndPatientIdAndStatusInOrderByTokenDateDescTokenNumberDesc(
+                tenantId, shopId, patientId, OPEN_ENCOUNTER_STATUSES);
+    }
+
     @Transactional(readOnly = true)
     public Map<String, Object> displayBoard(Long branchId, LocalDate date) {
         LocalDate tokenDate = date != null ? date : LocalDate.now();
         List<QueueToken> waiting = queueTokenRepository
                 .findByTenantIdAndShopIdAndBranchIdAndTokenDateAndStatusOrderByTokenNumberAsc(
-                        TenantContext.requireTenantId(), TenantContext.requireShopId(), branchId, tokenDate, "WAITING");
+                        TenantContext.requireTenantId(), TenantContext.requireShopId(), branchId, tokenDate, STATUS_WAITING);
         List<QueueToken> called = queueTokenRepository
                 .findByTenantIdAndShopIdAndBranchIdAndTokenDateAndStatusOrderByTokenNumberAsc(
-                        TenantContext.requireTenantId(), TenantContext.requireShopId(), branchId, tokenDate, "CALLED");
+                        TenantContext.requireTenantId(), TenantContext.requireShopId(), branchId, tokenDate, STATUS_CALLED);
         List<QueueToken> inConsult = queueTokenRepository
                 .findByTenantIdAndShopIdAndBranchIdAndTokenDateAndStatusOrderByTokenNumberAsc(
-                        TenantContext.requireTenantId(), TenantContext.requireShopId(), branchId, tokenDate, "IN_CONSULTATION");
+                        TenantContext.requireTenantId(), TenantContext.requireShopId(), branchId, tokenDate, STATUS_IN_CONSULTATION);
         Map<String, Object> board = new LinkedHashMap<>();
         board.put("date", tokenDate.toString());
         board.put(
@@ -68,7 +133,7 @@ public class QueueService {
         payload.setShopId(shopId);
         payload.setTokenDate(tokenDate);
         payload.setTokenNumber(nextNumber);
-        payload.setStatus("WAITING");
+        payload.setStatus(STATUS_WAITING);
         payload.setCheckedInAt(LocalDateTime.now());
         if (payload.getQueueType() == null || payload.getQueueType().isBlank()) {
             payload.setQueueType("NORMAL");
@@ -88,7 +153,7 @@ public class QueueService {
                 .findByTenantIdAndShopIdAndDoctorIdAndTokenDateOrderByTokenNumberAsc(
                         TenantContext.requireTenantId(), TenantContext.requireShopId(), doctorId, today)
                 .stream()
-                .filter(token -> "WAITING".equals(token.getStatus()))
+                .filter(token -> STATUS_WAITING.equals(token.getStatus()))
                 .sorted(Comparator.comparing(QueueToken::getPriority).reversed()
                         .thenComparing(QueueToken::getTokenNumber))
                 .toList();
@@ -96,36 +161,113 @@ public class QueueService {
             throw new IllegalArgumentException("No waiting patients in queue");
         }
         QueueToken next = waiting.get(0);
-        next.setStatus("CALLED");
+        next.setStatus(STATUS_CALLED);
         next.setCalledAt(LocalDateTime.now());
         return queueTokenRepository.save(next);
     }
 
     /**
-     * Start (or resume) consultation for a specific token — including out-of-order WAITING patients.
-     * Any other same-doctor IN_CONSULTATION token for today is parked back to WAITING.
+     * Start (or resume) consultation for a specific token — including lab-wait / results-ready resumes.
+     * Any other same-doctor IN_CONSULTATION token for today is parked back to WAITING
+     * (lab-hold tokens are never auto-parked).
      */
     @Transactional
     public QueueToken startConsultation(Long tokenId) {
         TenantContext.requireAnyPermission(
                 "MANAGE_CONSULTATIONS", "WRITE_PRESCRIPTION", "VIEW_DOCTOR_DASHBOARD");
         QueueToken token = require(tokenId);
-        String status = token.getStatus() == null ? "" : token.getStatus().trim().toUpperCase();
-        if ("COMPLETED".equals(status) || "CANCELLED".equals(status) || "NO_SHOW".equals(status)) {
+        String status = normalizeStatus(token.getStatus());
+        if (STATUS_COMPLETED.equals(status) || STATUS_CANCELLED.equals(status) || STATUS_NO_SHOW.equals(status)) {
             throw new IllegalArgumentException("Cannot start consultation for token status: " + status);
         }
-        if ("IN_CONSULTATION".equals(status)) {
+        if (STATUS_IN_CONSULTATION.equals(status)) {
             return token;
         }
-        if (!"WAITING".equals(status) && !"CALLED".equals(status)) {
+        if (!STARTABLE.contains(status)) {
             throw new IllegalArgumentException("Cannot start consultation for token status: " + status);
         }
         parkOtherInConsultation(token);
         if (token.getCalledAt() == null) {
             token.setCalledAt(LocalDateTime.now());
         }
-        token.setStatus("IN_CONSULTATION");
+        token.setStatus(STATUS_IN_CONSULTATION);
         token.setConsultStartedAt(LocalDateTime.now());
+        token.setCompletedAt(null);
+        return queueTokenRepository.save(token);
+    }
+
+    /**
+     * Pause an active consult while investigations are pending — same encounter stays open.
+     */
+    @Transactional
+    public QueueToken awaitLabResults(Long tokenId, Long consultationId) {
+        TenantContext.requireAnyPermission(
+                "MANAGE_CONSULTATIONS", "WRITE_PRESCRIPTION", "VIEW_DOCTOR_DASHBOARD");
+        QueueToken token = require(tokenId);
+        String status = normalizeStatus(token.getStatus());
+        if (!STATUS_IN_CONSULTATION.equals(status)
+                && !STATUS_WAITING_FOR_LAB_RESULTS.equals(status)
+                && !STATUS_LAB_RESULTS_AVAILABLE.equals(status)) {
+            throw new IllegalArgumentException(
+                    "Await lab results only from IN_CONSULTATION / lab-hold statuses, got: " + status);
+        }
+        if (consultationId != null && consultationId > 0) {
+            token.setConsultationId(consultationId);
+        }
+        token.setStatus(STATUS_WAITING_FOR_LAB_RESULTS);
+        token.setCompletedAt(null);
+        return queueTokenRepository.save(token);
+    }
+
+    /**
+     * Lab verified/released results for a polyclinic order — flip matching open encounter to RESULTS AVAILABLE.
+     * Idempotent: already LAB_RESULTS_AVAILABLE / IN_CONSULTATION is left alone (or promoted from WAITING_FOR_LAB).
+     */
+    @Transactional
+    public QueueToken markLabResultsAvailable(Long patientId, Long doctorId, Long consultationId) {
+        TenantContext.requireAnyPermission(
+                "MANAGE_CONSULTATIONS", "WRITE_PRESCRIPTION", "VIEW_DOCTOR_DASHBOARD", "MANAGE_LAB_RESULTS", "RELEASE_LAB_REPORTS");
+        if (patientId == null || patientId <= 0) {
+            throw new IllegalArgumentException("patientId is required");
+        }
+        Long tenantId = TenantContext.requireTenantId();
+        String shopId = TenantContext.requireShopId();
+
+        QueueToken token = null;
+        if (consultationId != null && consultationId > 0) {
+            token = queueTokenRepository
+                    .findFirstByTenantIdAndShopIdAndConsultationIdAndStatusInOrderByIdDesc(
+                            tenantId, shopId, consultationId, LAB_HOLD_STATUSES)
+                    .orElse(null);
+        }
+        if (token == null && doctorId != null && doctorId > 0) {
+            token = queueTokenRepository
+                    .findByTenantIdAndShopIdAndPatientIdAndDoctorIdAndStatusInOrderByTokenDateDescTokenNumberDesc(
+                            tenantId, shopId, patientId, doctorId, LAB_HOLD_STATUSES)
+                    .stream()
+                    .findFirst()
+                    .orElse(null);
+        }
+        if (token == null) {
+            token = queueTokenRepository
+                    .findByTenantIdAndShopIdAndPatientIdAndStatusInOrderByTokenDateDescTokenNumberDesc(
+                            tenantId, shopId, patientId, LAB_HOLD_STATUSES)
+                    .stream()
+                    .findFirst()
+                    .orElse(null);
+        }
+        if (token == null) {
+            // No lab-hold encounter — nothing to update (walk-in lab / already completed).
+            return null;
+        }
+        if (STATUS_LAB_RESULTS_AVAILABLE.equalsIgnoreCase(token.getStatus())) {
+            return token;
+        }
+        if (consultationId != null && consultationId > 0 && token.getConsultationId() == null) {
+            token.setConsultationId(consultationId);
+        }
+        token.setStatus(STATUS_LAB_RESULTS_AVAILABLE);
+        token.setCompletedAt(null);
         return queueTokenRepository.save(token);
     }
 
@@ -140,9 +282,9 @@ public class QueueService {
                         tokenDate)
                 .stream()
                 .filter(other -> other.getId() != null && !other.getId().equals(starting.getId()))
-                .filter(other -> "IN_CONSULTATION".equalsIgnoreCase(other.getStatus()))
+                .filter(other -> STATUS_IN_CONSULTATION.equalsIgnoreCase(other.getStatus()))
                 .forEach(other -> {
-                    other.setStatus("WAITING");
+                    other.setStatus(STATUS_WAITING);
                     other.setConsultStartedAt(null);
                     other.setCalledAt(null);
                     queueTokenRepository.save(other);
@@ -154,7 +296,7 @@ public class QueueService {
         TenantContext.requireAnyPermission(
                 "MANAGE_CONSULTATIONS", "WRITE_PRESCRIPTION", "VIEW_DOCTOR_DASHBOARD", "MANAGE_QUEUE");
         QueueToken token = require(tokenId);
-        token.setStatus("COMPLETED");
+        token.setStatus(STATUS_COMPLETED);
         token.setCompletedAt(LocalDateTime.now());
         return queueTokenRepository.save(token);
     }
@@ -162,7 +304,11 @@ public class QueueService {
     @Transactional
     public QueueToken skip(Long tokenId) {
         QueueToken token = require(tokenId);
-        token.setStatus("WAITING");
+        String status = normalizeStatus(token.getStatus());
+        if (STATUS_WAITING_FOR_LAB_RESULTS.equals(status) || STATUS_LAB_RESULTS_AVAILABLE.equals(status)) {
+            throw new IllegalArgumentException("Cannot skip a lab-hold encounter; resume or complete it instead");
+        }
+        token.setStatus(STATUS_WAITING);
         token.setCalledAt(null);
         token.setConsultStartedAt(null);
         return queueTokenRepository.save(token);
@@ -179,9 +325,13 @@ public class QueueService {
                 .findByTenantIdAndShopIdAndDoctorIdAndTokenDateOrderByTokenNumberAsc(
                         TenantContext.requireTenantId(), TenantContext.requireShopId(), doctorId, tokenDate)
                 .stream()
-                .filter(token -> "WAITING".equals(token.getStatus()))
+                .filter(token -> STATUS_WAITING.equals(token.getStatus()))
                 .count();
         return (int) Math.min(waitingCount * 8, 120);
+    }
+
+    private static String normalizeStatus(String status) {
+        return status == null ? "" : status.trim().toUpperCase();
     }
 
     private static void validate(QueueToken payload) {
