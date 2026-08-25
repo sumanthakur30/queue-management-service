@@ -54,9 +54,18 @@ public class QueueController {
         return queueService.callNext(doctorId);
     }
 
+    @GetMapping("/tokens/{id}")
+    public QueueToken getToken(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long doctorId) {
+        return queueService.getToken(id, doctorId);
+    }
+
     @PutMapping("/tokens/{id}/start")
-    public QueueToken start(@PathVariable Long id) {
-        return queueService.startConsultation(id);
+    public QueueToken start(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long doctorId) {
+        return queueService.startConsultation(id, doctorId);
     }
 
     @PutMapping("/tokens/{id}/await-lab")

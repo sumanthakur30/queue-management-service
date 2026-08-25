@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.shopmanagement.queueservice.model.QueueToken;
 import com.shopmanagement.queueservice.repository.QueueTokenRepository;
+import com.shopmanagement.queueservice.support.QueueDoctorAccess;
 import com.shopmanagement.queueservice.support.TenantContext;
 
 @Service
@@ -166,16 +167,29 @@ public class QueueService {
         return queueTokenRepository.save(next);
     }
 
+    @Transactional(readOnly = true)
+    public QueueToken getToken(Long tokenId, Long doctorId) {
+        QueueToken token = require(tokenId);
+        QueueDoctorAccess.requireDoctorMatch(token, doctorId);
+        return token;
+    }
+
+    @Transactional
+    public QueueToken startConsultation(Long tokenId) {
+        return startConsultation(tokenId, null);
+    }
+
     /**
      * Start (or resume) consultation for a specific token — including lab-wait / results-ready resumes.
      * Any other same-doctor IN_CONSULTATION token for today is parked back to WAITING
      * (lab-hold tokens are never auto-parked).
      */
     @Transactional
-    public QueueToken startConsultation(Long tokenId) {
+    public QueueToken startConsultation(Long tokenId, Long doctorId) {
         TenantContext.requireAnyPermission(
                 "MANAGE_CONSULTATIONS", "WRITE_PRESCRIPTION", "VIEW_DOCTOR_DASHBOARD");
         QueueToken token = require(tokenId);
+        QueueDoctorAccess.requireDoctorMatch(token, doctorId);
         String status = normalizeStatus(token.getStatus());
         if (STATUS_COMPLETED.equals(status) || STATUS_CANCELLED.equals(status) || STATUS_NO_SHOW.equals(status)) {
             throw new IllegalArgumentException("Cannot start consultation for token status: " + status);
