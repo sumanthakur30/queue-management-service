@@ -2,18 +2,22 @@ package com.shopmanagement.queueservice.service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.shopmanagement.queueservice.model.QueueToken;
 import com.shopmanagement.queueservice.repository.QueueTokenRepository;
 import com.shopmanagement.queueservice.support.QueueDoctorAccess;
+import com.shopmanagement.queueservice.support.QueueWaitingOrder;
+import com.shopmanagement.queueservice.support.SlotAlreadyBookedException;
 import com.shopmanagement.queueservice.support.TenantContext;
 
 @Service
@@ -59,8 +63,9 @@ public class QueueService {
             throw new IllegalArgumentException("doctorId is required");
         }
         LocalDate tokenDate = date != null ? date : LocalDate.now();
-        return queueTokenRepository.findByTenantIdAndShopIdAndDoctorIdAndTokenDateOrderByTokenNumberAsc(
+        List<QueueToken> tokens = queueTokenRepository.findByTenantIdAndShopIdAndDoctorIdAndTokenDateOrderByTokenNumberAsc(
                 TenantContext.requireTenantId(), TenantContext.requireShopId(), doctorId, tokenDate);
+        return QueueWaitingOrder.orderTodayQueue(tokens);
     }
 
     /**
@@ -143,7 +148,44 @@ public class QueueService {
             payload.setPriority(0);
         }
         payload.setEstimatedWaitMinutes(estimateWaitMinutes(payload.getDoctorId(), tokenDate));
-        return queueTokenRepository.save(payload);
+        applyBookingType(payload, tokenDate);
+        if (payload.getSlotStart() != null) {
+            reserveSlotOrFail(tenantId, shopId, payload.getDoctorId(), tokenDate, payload.getSlotStart());
+        }
+        try {
+            return queueTokenRepository.save(payload);
+        } catch (DataIntegrityViolationException ex) {
+            throw new SlotAlreadyBookedException("This time slot is already booked");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> bookedSlots(Long doctorId, LocalDate date) {
+        if (doctorId == null) {
+            throw new IllegalArgumentException("doctorId is required");
+        }
+        LocalDate tokenDate = date != null ? date : LocalDate.now();
+        List<Map<String, Object>> booked = queueTokenRepository
+                .findByTenantIdAndShopIdAndDoctorIdAndTokenDateAndSlotStartIsNotNull(
+                        TenantContext.requireTenantId(), TenantContext.requireShopId(), doctorId, tokenDate)
+                .stream()
+                .filter(token -> !isReleasedSlotStatus(token.getStatus()))
+                .sorted(Comparator.comparing(QueueToken::getSlotStart))
+                .map(token -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("slotStart", token.getSlotStart() != null ? token.getSlotStart().toString() : null);
+                    row.put("tokenNumber", token.getTokenNumber());
+                    row.put("status", token.getStatus());
+                    row.put("bookingType", token.getBookingType());
+                    row.put("tokenId", token.getId());
+                    return row;
+                })
+                .toList();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("date", tokenDate.toString());
+        body.put("doctorId", doctorId);
+        body.put("bookedSlots", booked);
+        return body;
     }
 
     @Transactional
@@ -155,8 +197,7 @@ public class QueueService {
                         TenantContext.requireTenantId(), TenantContext.requireShopId(), doctorId, today)
                 .stream()
                 .filter(token -> STATUS_WAITING.equals(token.getStatus()))
-                .sorted(Comparator.comparing(QueueToken::getPriority).reversed()
-                        .thenComparing(QueueToken::getTokenNumber))
+                .sorted(QueueWaitingOrder.waitingComparator())
                 .toList();
         if (waiting.isEmpty()) {
             throw new IllegalArgumentException("No waiting patients in queue");
@@ -346,6 +387,33 @@ public class QueueService {
 
     private static String normalizeStatus(String status) {
         return status == null ? "" : status.trim().toUpperCase();
+    }
+
+    private void applyBookingType(QueueToken payload, LocalDate tokenDate) {
+        if (payload.getSlotStart() != null) {
+            payload.setBookingType(QueueWaitingOrder.BOOKING_SLOT);
+            if (payload.getPreferredSlotAt() == null) {
+                payload.setPreferredSlotAt(tokenDate.atTime(payload.getSlotStart()));
+            }
+            return;
+        }
+        if (payload.getBookingType() == null || payload.getBookingType().isBlank()) {
+            payload.setBookingType(QueueWaitingOrder.BOOKING_WALK_IN);
+        }
+    }
+
+    private void reserveSlotOrFail(
+            Long tenantId, String shopId, Long doctorId, LocalDate tokenDate, LocalTime slotStart) {
+        queueTokenRepository
+                .findOccupiedSlotForUpdate(tenantId, shopId, doctorId, tokenDate, slotStart)
+                .ifPresent(existing -> {
+                    throw new SlotAlreadyBookedException("This time slot is already booked");
+                });
+    }
+
+    private static boolean isReleasedSlotStatus(String status) {
+        String normalized = normalizeStatus(status);
+        return STATUS_CANCELLED.equals(normalized) || STATUS_NO_SHOW.equals(normalized);
     }
 
     private static void validate(QueueToken payload) {

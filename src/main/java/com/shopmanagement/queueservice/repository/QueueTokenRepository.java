@@ -1,10 +1,14 @@
 package com.shopmanagement.queueservice.repository;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -42,4 +46,22 @@ public interface QueueTokenRepository extends JpaRepository<QueueToken, Long> {
             @Param("shopId") String shopId,
             @Param("doctorId") Long doctorId,
             @Param("tokenDate") LocalDate tokenDate);
+
+    List<QueueToken> findByTenantIdAndShopIdAndDoctorIdAndTokenDateAndSlotStartIsNotNull(
+            Long tenantId, String shopId, Long doctorId, LocalDate tokenDate);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT q FROM QueueToken q
+            WHERE q.tenantId = :tenantId AND q.shopId = :shopId
+              AND q.doctorId = :doctorId AND q.tokenDate = :tokenDate
+              AND q.slotStart = :slotStart
+              AND UPPER(q.status) NOT IN ('CANCELLED', 'NO_SHOW')
+            """)
+    Optional<QueueToken> findOccupiedSlotForUpdate(
+            @Param("tenantId") Long tenantId,
+            @Param("shopId") String shopId,
+            @Param("doctorId") Long doctorId,
+            @Param("tokenDate") LocalDate tokenDate,
+            @Param("slotStart") LocalTime slotStart);
 }

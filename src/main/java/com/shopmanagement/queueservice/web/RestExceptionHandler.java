@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.shopmanagement.queueservice.support.SlotAlreadyBookedException;
+
 @RestControllerAdvice
 public class RestExceptionHandler {
 
@@ -21,6 +23,12 @@ public class RestExceptionHandler {
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public Map<String, String> forbidden(SecurityException ex) {
         return Map.of("message", ex.getMessage());
+    }
+
+    @ExceptionHandler(SlotAlreadyBookedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> slotConflict(SlotAlreadyBookedException ex) {
+        return Map.of("message", ex.getMessage() != null ? ex.getMessage() : "This time slot is already booked");
     }
 
     @ExceptionHandler(IllegalStateException.class)

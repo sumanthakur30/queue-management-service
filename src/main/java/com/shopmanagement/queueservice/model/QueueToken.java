@@ -2,6 +2,7 @@ package com.shopmanagement.queueservice.model;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 import com.shopmanagement.queueservice.model.base.TenantScopedEntity;
 
@@ -69,6 +70,18 @@ public class QueueToken extends TenantScopedEntity {
     @Column(name = "consultation_id")
     private Long consultationId;
 
+    /** Preferred appointment instant when Reception booked a slot (null = walk-in). */
+    @Column(name = "preferred_slot_at")
+    private LocalDateTime preferredSlotAt;
+
+    /** Slot start on token_date; unique per doctor when set. */
+    @Column(name = "slot_start")
+    private LocalTime slotStart;
+
+    /** WALK_IN (default / legacy) or SLOT. Null on old rows is treated as walk-in. */
+    @Column(name = "booking_type", length = 20)
+    private String bookingType;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Long getBranchId() { return branchId; }
@@ -103,4 +116,10 @@ public class QueueToken extends TenantScopedEntity {
     public void setOpdRoom(String opdRoom) { this.opdRoom = opdRoom; }
     public Long getConsultationId() { return consultationId; }
     public void setConsultationId(Long consultationId) { this.consultationId = consultationId; }
+    public LocalDateTime getPreferredSlotAt() { return preferredSlotAt; }
+    public void setPreferredSlotAt(LocalDateTime preferredSlotAt) { this.preferredSlotAt = preferredSlotAt; }
+    public LocalTime getSlotStart() { return slotStart; }
+    public void setSlotStart(LocalTime slotStart) { this.slotStart = slotStart; }
+    public String getBookingType() { return bookingType; }
+    public void setBookingType(String bookingType) { this.bookingType = bookingType; }
 }

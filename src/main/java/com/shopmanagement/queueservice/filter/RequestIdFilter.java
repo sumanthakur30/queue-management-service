@@ -87,6 +87,21 @@ public class RequestIdFilter extends OncePerRequestFilter {
         return permissions == null ? List.of() : permissions;
     }
 
+    /** Test-only tenant bind — not used by request filter. */
+    public static void bindForTest(Long tenantId, String shopId, String role, List<String> permissions) {
+        currentTenantId.set(tenantId);
+        currentShopId.set(shopId);
+        currentRole.set(role);
+        currentPermissions.set(permissions == null ? List.of() : permissions);
+    }
+
+    public static void clearForTest() {
+        currentTenantId.remove();
+        currentShopId.remove();
+        currentRole.remove();
+        currentPermissions.remove();
+    }
+
     private static String normalize(String value) {
         return value == null || value.isBlank() ? null : value.trim().toUpperCase();
     }
