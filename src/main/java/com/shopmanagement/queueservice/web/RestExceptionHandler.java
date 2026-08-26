@@ -28,7 +28,9 @@ public class RestExceptionHandler {
     @ExceptionHandler(SlotAlreadyBookedException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> slotConflict(SlotAlreadyBookedException ex) {
-        return Map.of("message", ex.getMessage() != null ? ex.getMessage() : "This time slot is already booked");
+        return Map.of(
+                "message",
+                ex.getMessage() != null ? ex.getMessage() : SlotAlreadyBookedException.MESSAGE);
     }
 
     @ExceptionHandler(IllegalStateException.class)

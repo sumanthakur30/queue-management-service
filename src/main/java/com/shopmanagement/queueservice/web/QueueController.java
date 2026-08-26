@@ -114,6 +114,11 @@ public class QueueController {
         return queueService.complete(id);
     }
 
+    @PutMapping("/tokens/{id}/cancel")
+    public QueueToken cancel(@PathVariable Long id) {
+        return queueService.cancel(id);
+    }
+
     @PutMapping("/tokens/{id}/skip")
     public QueueToken skip(@PathVariable Long id) {
         return queueService.skip(id);

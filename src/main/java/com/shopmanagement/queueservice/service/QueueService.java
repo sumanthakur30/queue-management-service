@@ -155,7 +155,7 @@ public class QueueService {
         try {
             return queueTokenRepository.save(payload);
         } catch (DataIntegrityViolationException ex) {
-            throw new SlotAlreadyBookedException("This time slot is already booked");
+            throw new SlotAlreadyBookedException();
         }
     }
 
@@ -407,13 +407,24 @@ public class QueueService {
         queueTokenRepository
                 .findOccupiedSlotForUpdate(tenantId, shopId, doctorId, tokenDate, slotStart)
                 .ifPresent(existing -> {
-                    throw new SlotAlreadyBookedException("This time slot is already booked");
+                    throw new SlotAlreadyBookedException();
                 });
+    }
+
+    @Transactional
+    public QueueToken cancel(Long tokenId) {
+        TenantContext.requireAnyPermission("MANAGE_QUEUE", "MANAGE_APPOINTMENTS", "MANAGE_CONSULTATIONS");
+        QueueToken token = require(tokenId);
+        token.setStatus(STATUS_CANCELLED);
+        token.setCompletedAt(LocalDateTime.now());
+        return queueTokenRepository.save(token);
     }
 
     private static boolean isReleasedSlotStatus(String status) {
         String normalized = normalizeStatus(status);
-        return STATUS_CANCELLED.equals(normalized) || STATUS_NO_SHOW.equals(normalized);
+        return STATUS_CANCELLED.equals(normalized)
+                || STATUS_NO_SHOW.equals(normalized)
+                || STATUS_COMPLETED.equals(normalized);
     }
 
     private static void validate(QueueToken payload) {

@@ -56,7 +56,7 @@ public interface QueueTokenRepository extends JpaRepository<QueueToken, Long> {
             WHERE q.tenantId = :tenantId AND q.shopId = :shopId
               AND q.doctorId = :doctorId AND q.tokenDate = :tokenDate
               AND q.slotStart = :slotStart
-              AND UPPER(q.status) NOT IN ('CANCELLED', 'NO_SHOW')
+              AND UPPER(q.status) NOT IN ('CANCELLED', 'NO_SHOW', 'COMPLETED')
             """)
     Optional<QueueToken> findOccupiedSlotForUpdate(
             @Param("tenantId") Long tenantId,
