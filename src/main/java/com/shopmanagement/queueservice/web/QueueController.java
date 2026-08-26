@@ -36,6 +36,14 @@ public class QueueController {
         return queueService.todayQueue(doctorId, date);
     }
 
+    /** Booked preferred slots for a doctor/date. Used by Reception slot grid (Available / Booked). */
+    @GetMapping("/slots")
+    public Map<String, Object> slots(
+            @RequestParam Long doctorId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return queueService.bookedSlots(doctorId, date);
+    }
+
     @GetMapping("/display")
     public Map<String, Object> display(
             @RequestParam Long branchId,
@@ -104,6 +112,11 @@ public class QueueController {
     @PutMapping("/tokens/{id}/complete")
     public QueueToken complete(@PathVariable Long id) {
         return queueService.complete(id);
+    }
+
+    @PutMapping("/tokens/{id}/cancel")
+    public QueueToken cancel(@PathVariable Long id) {
+        return queueService.cancel(id);
     }
 
     @PutMapping("/tokens/{id}/skip")
