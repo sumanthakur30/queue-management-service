@@ -412,6 +412,43 @@ public class QueueService {
     }
 
     @Transactional
+    public QueueToken reassignAppointmentDoctor(Long appointmentId, Long newDoctorId) {
+        TenantContext.requireAnyPermission("MANAGE_QUEUE", "MANAGE_APPOINTMENTS", "MANAGE_CONSULTATIONS");
+        if (appointmentId == null || appointmentId <= 0) {
+            throw new IllegalArgumentException("appointmentId is required");
+        }
+        if (newDoctorId == null || newDoctorId <= 0) {
+            throw new IllegalArgumentException("doctorId is required");
+        }
+        Long tenantId = TenantContext.requireTenantId();
+        String shopId = TenantContext.requireShopId();
+        List<QueueToken> tokens = queueTokenRepository.findByTenantIdAndShopIdAndAppointmentId(
+                tenantId, shopId, appointmentId);
+        QueueToken active = tokens.stream()
+                .filter(token -> OPEN_ENCOUNTER_STATUSES.contains(normalizeStatus(token.getStatus())))
+                .max(Comparator.comparing(QueueToken::getId, Comparator.nullsLast(Long::compareTo)))
+                .orElse(null);
+        if (active == null) {
+            throw new IllegalArgumentException("Queue token not found for appointment: " + appointmentId);
+        }
+        if (newDoctorId.equals(active.getDoctorId())) {
+            return active;
+        }
+        String status = normalizeStatus(active.getStatus());
+        if (STATUS_CALLED.equals(status)) {
+            active.setStatus(STATUS_WAITING);
+            active.setCalledAt(null);
+        }
+        active.setDoctorId(newDoctorId);
+        active.setTokenNumber(queueTokenRepository.findMaxTokenNumber(tenantId, shopId, newDoctorId, active.getTokenDate()) + 1);
+        active.setSlotStart(null);
+        active.setPreferredSlotAt(null);
+        active.setBookingType(QueueWaitingOrder.BOOKING_WALK_IN);
+        active.setEstimatedWaitMinutes(estimateWaitMinutes(newDoctorId, active.getTokenDate()));
+        return queueTokenRepository.save(active);
+    }
+
+    @Transactional
     public QueueToken cancel(Long tokenId) {
         TenantContext.requireAnyPermission("MANAGE_QUEUE", "MANAGE_APPOINTMENTS", "MANAGE_CONSULTATIONS");
         QueueToken token = require(tokenId);
