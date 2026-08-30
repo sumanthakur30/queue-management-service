@@ -114,6 +114,22 @@ public class QueueController {
         return queueService.complete(id);
     }
 
+    @PutMapping("/tokens/by-appointment/{appointmentId}/doctor")
+    public QueueToken reassignDoctor(
+            @PathVariable Long appointmentId,
+            @RequestBody Map<String, Object> body) {
+        Object raw = body == null ? null : body.get("doctorId");
+        Long doctorId = raw instanceof Number ? ((Number) raw).longValue() : null;
+        if (doctorId == null && raw != null) {
+            try {
+                doctorId = Long.parseLong(String.valueOf(raw));
+            } catch (NumberFormatException ignored) {
+                doctorId = null;
+            }
+        }
+        return queueService.reassignAppointmentDoctor(appointmentId, doctorId);
+    }
+
     @PutMapping("/tokens/{id}/cancel")
     public QueueToken cancel(@PathVariable Long id) {
         return queueService.cancel(id);

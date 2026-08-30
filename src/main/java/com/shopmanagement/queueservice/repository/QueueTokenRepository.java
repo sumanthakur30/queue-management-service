@@ -33,6 +33,8 @@ public interface QueueTokenRepository extends JpaRepository<QueueToken, Long> {
     List<QueueToken> findByTenantIdAndShopIdAndPatientIdAndStatusInOrderByTokenDateDescTokenNumberDesc(
             Long tenantId, String shopId, Long patientId, List<String> statuses);
 
+    List<QueueToken> findByTenantIdAndShopIdAndAppointmentId(Long tenantId, String shopId, Long appointmentId);
+
     Optional<QueueToken> findFirstByTenantIdAndShopIdAndConsultationIdAndStatusInOrderByIdDesc(
             Long tenantId, String shopId, Long consultationId, List<String> statuses);
 
