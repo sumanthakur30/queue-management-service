@@ -1,41 +1,49 @@
 package com.shopmanagement.queueservice.web;
 
-import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.shopmanagement.queueservice.support.SlotAlreadyBookedException;
+import com.sugamflow.observability.error.ErrorCodes;
+import com.sugamflow.observability.error.ErrorEnvelope;
 
 @RestControllerAdvice
 public class RestExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Map<String, String> badRequest(IllegalArgumentException ex) {
-        return Map.of("message", ex.getMessage());
+    public ResponseEntity<Map<String, Object>> badRequest(IllegalArgumentException ex) {
+        return body(HttpStatus.BAD_REQUEST, ex.getMessage(), ErrorCodes.VALIDATION);
     }
 
     @ExceptionHandler(SecurityException.class)
-    @ResponseStatus(HttpStatus.FORBIDDEN)
-    public Map<String, String> forbidden(SecurityException ex) {
-        return Map.of("message", ex.getMessage());
+    public ResponseEntity<Map<String, Object>> forbidden(SecurityException ex) {
+        return body(HttpStatus.FORBIDDEN, ex.getMessage(), null);
     }
 
     @ExceptionHandler(SlotAlreadyBookedException.class)
-    @ResponseStatus(HttpStatus.CONFLICT)
-    public Map<String, String> slotConflict(SlotAlreadyBookedException ex) {
-        return Map.of(
-                "message",
-                ex.getMessage() != null ? ex.getMessage() : SlotAlreadyBookedException.MESSAGE);
+    public ResponseEntity<Map<String, Object>> slotConflict(SlotAlreadyBookedException ex) {
+        return body(HttpStatus.CONFLICT,
+                ex.getMessage() != null ? ex.getMessage() : SlotAlreadyBookedException.MESSAGE,
+                ErrorCodes.CONFLICT);
     }
 
     @ExceptionHandler(IllegalStateException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Map<String, String> illegalState(IllegalStateException ex) {
-        return Map.of("message", ex.getMessage());
+    public ResponseEntity<Map<String, Object>> illegalState(IllegalStateException ex) {
+        return body(HttpStatus.BAD_REQUEST, ex.getMessage(), ErrorCodes.QUEUE);
+    }
+
+    private ResponseEntity<Map<String, Object>> body(HttpStatus status, String message, String errorCode) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("message", message);
+        ErrorEnvelope.apply(body, errorCode != null ? errorCode : ErrorCodes.VALIDATION);
+        if (errorCode == null) {
+            body.remove("errorCode");
+        }
+        return ResponseEntity.status(status).headers(ErrorEnvelope.headers()).body(body);
     }
 }
